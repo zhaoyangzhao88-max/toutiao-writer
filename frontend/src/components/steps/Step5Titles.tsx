@@ -1,0 +1,462 @@
+import React, { useState, useCallback, type FC } from 'react';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { useWorkflowStore } from '../../store/useWorkflowStore';
+import { writingApi } from '../../lib/api';
+import { TRIGGER_LABELS } from '../../lib/constants';
+import type {
+  TitleGeneration,
+  TitleCard as TitleCardType,
+  TriggerType,
+} from '../../types/workflow';
+
+var TRIGGER_COLOR_MAP: Record<TriggerType, { bg: string; text: string; dot: string }> = {
+  '认知冲突': { bg: 'bg-purple-50', text: 'text-purple-800', dot: 'bg-purple-500' },
+  '好奇缺口': { bg: 'bg-blue-50', text: 'text-blue-800', dot: 'bg-blue-500' },
+  '恐惧损失': { bg: 'bg-red-50', text: 'text-red-800', dot: 'bg-red-500' },
+  '争议挑衅': { bg: 'bg-orange-50', text: 'text-orange-800', dot: 'bg-orange-500' },
+  '社会证明': { bg: 'bg-green-50', text: 'text-green-800', dot: 'bg-green-500' },
+  '结果承诺': { bg: 'bg-teal-50', text: 'text-teal-800', dot: 'bg-teal-500' },
+  '身份代入': { bg: 'bg-rose-50', text: 'text-rose-800', dot: 'bg-rose-500' },
+  '数字锚定': { bg: 'bg-cyan-50', text: 'text-cyan-800', dot: 'bg-cyan-500' },
+};
+
+function TriggerBadge(props: { trigger: TriggerType }) {
+  var colors = TRIGGER_COLOR_MAP[props.trigger];
+  if (!colors) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
+        {props.trigger}
+      </span>
+    );
+  }
+  var mergedClasses =
+    'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ' +
+    colors.bg + ' ' + colors.text;
+  return (
+    <span className={mergedClasses}>
+      <span
+        className={'inline-block w-1.5 h-1.5 rounded-full ' + colors.dot}
+        aria-hidden="true"
+      />
+      {props.trigger}
+    </span>
+  );
+}
+
+var EMPTY_TITLE_GEN: TitleGeneration = {
+  titles: [],
+  triggerCoverage: [],
+};
+
+var GRID_CLASSES =
+  'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4';
+
+var TITLE_SELECTED_RING = 'ring-2 ring-blue-500 border-blue-400 bg-blue-50';
+
+var TITLE_CARD_BASE =
+  'border border-gray-200 rounded-xl p-5 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-gray-300';
+
+var Step5Titles: FC = function () {
+  var store = useWorkflowStore();
+  var fetchedContent = store.fetchedContent;
+  var rawInput = store.rawInput;
+  var deconstructResult = store.deconstructResult;
+  var materialCard = store.materialCard;
+  var titleGeneration = store.titleGeneration;
+  var selectedTitle = store.selectedTitle;
+  var setTitleGeneration = store.setTitleGeneration;
+  var setSelectedTitle = store.setSelectedTitle;
+  var completeStep = store.completeStep;
+  var goNext = store.goNext;
+  var goPrev = store.goPrev;
+
+  var rawMaterial = fetchedContent?.content || rawInput || '';
+  var genre = deconstructResult?.genre;
+
+  var initTitles = titleGeneration?.titles || [];
+  var initCoverage = titleGeneration?.triggerCoverage || [];
+  var initSelected = selectedTitle || '';
+
+  var [titles, setTitles] = useState<TitleCardType[]>(initTitles);
+  var [triggerCoverage, setTriggerCoverage] = useState<TriggerType[]>(initCoverage);
+  var [selected, setSelected] = useState<string>(initSelected);
+  var [customTitle, setCustomTitle] = useState('');
+  var [loading, setLoading] = useState(false);
+  var [error, setError] = useState<string | null>(null);
+  var [generated, setGenerated] = useState(initTitles.length > 0);
+
+  var hasTitles = titles.length > 0;
+  var hasSelection = selected.length > 0 || customTitle.trim().length > 0;
+
+  var handleGenerate = useCallback(async function () {
+    if (!rawMaterial.trim()) return;
+    setLoading(true);
+    setError(null);
+    try {
+      var res = await writingApi.titles({
+        material_card: materialCard || {},
+        deconstruct_result: deconstructResult || {},
+      });
+      if (res.success && res.data) {
+        var data = res.data as unknown as TitleGeneration;
+        if (data.titles && data.titles.length > 0) {
+          setTitles(data.titles);
+        }
+        if (data.triggerCoverage && data.triggerCoverage.length > 0) {
+          setTriggerCoverage(data.triggerCoverage);
+        }
+        setTitleGeneration(data);
+        setGenerated(true);
+      } else {
+        setError(res.error || '标题生成失败，请稍后重试');
+      }
+    } catch (_err) {
+      setError('网络错误，请稍后重试');
+    } finally {
+      setLoading(false);
+    }
+  }, [rawMaterial, materialCard, deconstructResult, setTitleGeneration]);
+
+  var handleSelectTitle = function (titleText: string) {
+    setSelected(titleText);
+    setCustomTitle('');
+    setSelectedTitle(titleText);
+  };
+
+  var handleCustomTitleChange = function (e: React.ChangeEvent<HTMLInputElement>) {
+    setCustomTitle(e.target.value);
+    if (e.target.value.trim().length > 0) {
+      setSelected('');
+    }
+  };
+
+  var handleUseCustomTitle = function () {
+    if (!customTitle.trim()) return;
+    setSelected(customTitle.trim());
+    setSelectedTitle(customTitle.trim());
+  };
+
+  var handleConfirm = function () {
+    var finalTitle = selected || customTitle.trim();
+    if (finalTitle) {
+      setSelectedTitle(finalTitle);
+    }
+    completeStep(5);
+    goNext();
+  };
+
+  var renderTriggerCoverage = function () {
+    if (triggerCoverage.length === 0) return null;
+    return (
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+        <h3 className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+          <span>{'\u{1F3AF}'}</span>
+          <span>触发器覆盖</span>
+          <Badge variant="info">
+            本轮覆盖了 {triggerCoverage.length} 种触发器
+          </Badge>
+        </h3>
+        <div className="flex flex-wrap gap-1.5">
+          {triggerCoverage.map(function (trigger) {
+            return (
+              <TriggerBadge key={trigger} trigger={trigger} />
+            );
+          })}
+        </div>
+        <p className="text-xs text-gray-400 mt-2">
+          覆盖的触发器越多，标题击中读者心理的概率越高
+        </p>
+      </div>
+    );
+  };
+
+  var renderTitleCard = function (title: TitleCardType, index: number) {
+    var isSelected = selected === title.text;
+    var cardClasses = TITLE_CARD_BASE;
+    if (isSelected) {
+      cardClasses = cardClasses + ' ' + TITLE_SELECTED_RING;
+    }
+
+    return (
+      <div
+        key={index}
+        role="button"
+        tabIndex={0}
+        className={cardClasses}
+        onClick={function () {
+          handleSelectTitle(title.text);
+        }}
+        onKeyDown={function (e) {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            handleSelectTitle(title.text);
+          }
+        }}
+        aria-label={'选择标题：' + title.text}
+        aria-pressed={isSelected}
+      >
+        <div className="flex items-start justify-between mb-3">
+          <span className="text-xs text-gray-400 font-medium">
+            #{index + 1}
+          </span>
+          <div className="flex items-center gap-1.5">
+            {title.recommended && (
+              <span
+                className="text-amber-500 text-base"
+                role="img"
+                aria-label="推荐标题"
+                title="推荐标题"
+              >
+                {'⭐'}
+              </span>
+            )}
+            {isSelected && (
+              <span
+                className="text-blue-500 text-base"
+                role="img"
+                aria-label="已选中"
+              >
+                {'✅'}
+              </span>
+            )}
+          </div>
+        </div>
+
+        <p className="text-base font-bold text-gray-900 mb-3 leading-snug">
+          {title.text}
+        </p>
+
+        <div className="space-y-2">
+          <TriggerBadge trigger={title.trigger} />
+          <p className="text-xs text-gray-500 leading-relaxed">
+            {title.drivingForce}
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  var renderEmptyState = function () {
+    return (
+      <Card padding="lg">
+        <div className="text-center py-8">
+          <span className="text-4xl">{'\u{1F4DD}'}</span>
+          <h3 className="text-lg font-semibold text-gray-800 mt-3 mb-1">
+            尚未生成标题
+          </h3>
+          <p className="text-sm text-gray-500 mb-4">
+            点击上方按钮，AI 将根据你的素材和 8 种心理触发器生成备选标题
+          </p>
+          <p className="text-xs text-gray-400">
+            需要先完成 Step 1-4 的材料准备
+          </p>
+        </div>
+      </Card>
+    );
+  };
+
+  var renderLoadingState = function () {
+    return (
+      <div className={GRID_CLASSES}>
+        {[0, 1, 2].map(function (i) {
+          return (
+            <div
+              key={i}
+              className="border border-gray-200 rounded-xl p-5 animate-pulse"
+            >
+              <div className="h-3 bg-gray-200 rounded w-8 mb-3" />
+              <div className="h-5 bg-gray-200 rounded w-full mb-2" />
+              <div className="h-5 bg-gray-200 rounded w-3/4 mb-3" />
+              <div className="h-4 bg-gray-200 rounded w-16 mb-2" />
+              <div className="h-3 bg-gray-200 rounded w-full" />
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="w-full max-w-6xl mx-auto space-y-6">
+      {/* Header */}
+      <div>
+        <h2 className="text-xl font-bold text-gray-900 mb-1">
+          Step 5：生成标题
+        </h2>
+        <p className="text-sm text-gray-500">
+          触发器匹配 + 12公式，生成备选标题
+        </p>
+      </div>
+
+      {/* Raw material summary banner */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 flex items-center gap-3 text-sm">
+        <span className="text-gray-500 flex-shrink-0">{'\u{1F4C4}'}</span>
+        <span className="text-gray-600">
+          素材共 {rawMaterial.length} 字
+        </span>
+        {genre && (
+          <span className="text-gray-400">
+            |
+          </span>
+        )}
+        {genre && (
+          <Badge variant="default">
+            {genre === 'business' && '商业财经'}
+            {genre === 'society' && '社会民生'}
+            {genre === 'people' && '人物故事'}
+            {genre === 'life' && '生活方式'}
+          </Badge>
+        )}
+      </div>
+
+      {/* Generate button area */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          {generated && hasTitles && (
+            <Badge variant="success">
+              已生成 {titles.length} 个标题
+            </Badge>
+          )}
+          {!generated && !loading && (
+            <span className="text-sm text-gray-400">
+              点击右侧按钮开始生成
+            </span>
+          )}
+        </div>
+        <div className="flex gap-2">
+          {generated && hasTitles && (
+            <Button
+              variant="ghost"
+              size="md"
+              loading={loading}
+              disabled={!rawMaterial.trim()}
+              onClick={handleGenerate}
+            >
+              重新生成
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            size="md"
+            loading={loading}
+            disabled={!rawMaterial.trim()}
+            onClick={handleGenerate}
+          >
+            {'\u{2728}'} AI 生成标题
+          </Button>
+        </div>
+      </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+          {error}
+        </div>
+      )}
+
+      {/* Loading state */}
+      {loading && renderLoadingState()}
+
+      {/* Title cards grid */}
+      {!loading && hasTitles && (
+        <div>
+          <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+            <span>{'\u{1F3AF}'}</span>
+            <span>备选标题</span>
+            <span className="text-xs text-gray-400 font-normal">
+              点击卡片选择
+            </span>
+          </h3>
+          <div className={GRID_CLASSES}>
+            {titles.map(function (title, i) {
+              return renderTitleCard(title, i);
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!loading && !hasTitles && !error && renderEmptyState()}
+
+      {/* Trigger coverage summary */}
+      {!loading && hasTitles && renderTriggerCoverage()}
+
+      {/* Hint text */}
+      {hasTitles && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          <p className="text-xs text-amber-800">
+            {'💡'} 选一个，或说"用①的感觉，换④的套路"——你可以在正文阶段自由调整标题
+          </p>
+        </div>
+      )}
+
+      {/* Custom title input */}
+      <Card padding="md">
+        <h3 className="font-semibold text-gray-700 mb-3 flex items-center gap-2">
+          <span>{'✏️'}</span>
+          <span>自定义标题</span>
+          <span className="text-xs text-gray-400 font-normal">
+            也可以输入你自己的标题
+          </span>
+        </h3>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={customTitle}
+            onChange={handleCustomTitleChange}
+            placeholder="输入你自己的想法..."
+            className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+            aria-label="自定义标题输入框"
+            onKeyDown={function (e) {
+              if (e.key === 'Enter') {
+                handleUseCustomTitle();
+              }
+            }}
+          />
+          <Button
+            variant="secondary"
+            size="md"
+            disabled={!customTitle.trim()}
+            onClick={handleUseCustomTitle}
+          >
+            用这个标题
+          </Button>
+        </div>
+      </Card>
+
+      {/* Current selection indicator */}
+      {hasSelection && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
+          <span className="text-blue-500 text-lg flex-shrink-0">{'✅'}</span>
+          <div>
+            <p className="text-sm font-medium text-blue-800 mb-0.5">
+              当前选中的标题
+            </p>
+            <p className="text-base font-bold text-blue-900">
+              {selected || customTitle.trim()}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Action bar */}
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+        <Button variant="ghost" size="md" onClick={goPrev}>
+          上一步
+        </Button>
+        <Button
+          variant="primary"
+          size="md"
+          disabled={!hasSelection}
+          onClick={handleConfirm}
+        >
+          确认选中标题
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+export default Step5Titles;
