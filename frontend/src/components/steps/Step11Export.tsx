@@ -9,8 +9,93 @@ import { exportApi } from '../../lib/api';
 import type { ArticleStats } from '../../types/workflow';
 
 /* ------------------------------------------------------------------ */
-/*  Calculate article stats from raw text                                */
+/*  HTML → DOCX text converter                                           */
 /* ------------------------------------------------------------------ */
+
+function htmlToDocxText(html: string, imageUrls: string[]): string {
+  var div = document.createElement('div');
+  div.innerHTML = html;
+
+  var parts: string[] = [];
+  var imgIdx = 0;
+
+  function insertImage() {
+    if (imgIdx < imageUrls.length) {
+      parts.push('[img]' + (imageUrls[imgIdx] ? ' ' + imageUrls[imgIdx] : ''));
+      imgIdx++;
+    }
+  }
+
+  // Insert first image early
+  insertImage();
+
+  for (var i = 0; i < div.childNodes.length; i++) {
+    var node = div.childNodes[i];
+
+    if (node.nodeType === Node.TEXT_NODE) {
+      var text = (node.textContent || '').trim();
+      if (text) parts.push(text);
+      continue;
+    }
+
+    if (!(node instanceof HTMLElement)) continue;
+    var el = node as HTMLElement;
+    var tag = el.tagName.toLowerCase();
+
+    switch (tag) {
+      case 'h1':
+      case 'h2':
+        parts.push('【' + (el.textContent || '').trim() + '】');
+        insertImage();
+        break;
+      case 'h3':
+        parts.push('### ' + (el.textContent || '').trim());
+        break;
+      case 'blockquote':
+        parts.push('> ' + (el.textContent || '').trim());
+        break;
+      case 'hr':
+        parts.push('---');
+        break;
+      case 'p': {
+        var inner = el.innerHTML
+          .replace(/<strong>(.*?)<\/strong>/g, '**$1**')
+          .replace(/<b>(.*?)<\/b>/g, '**$1**')
+          .replace(/<em>(.*?)<\/em>/g, '*$1*')
+          .replace(/<i>(.*?)<\/i>/g, '*$1*')
+          .replace(/<br\s*\/?>/g, '\n');
+        var pText = inner.trim();
+        if (pText) {
+          // Check for ??? marker (interactive question)
+          if (pText.startsWith('???')) {
+            parts.push(pText);
+          } else {
+            parts.push(pText);
+          }
+        }
+        break;
+      }
+      case 'ul':
+      case 'ol': {
+        var items = el.querySelectorAll('li');
+        items.forEach(function (li) {
+          parts.push('- ' + (li.textContent || '').trim());
+        });
+        break;
+      }
+      default:
+        var content = (el.textContent || '').trim();
+        if (content) parts.push(content);
+    }
+
+    // Insert image after each major block
+    if (['h1', 'h2', 'h3', 'blockquote', 'hr', 'p'].includes(tag) && imgIdx < imageUrls.length) {
+      insertImage();
+    }
+  }
+
+  return parts.join('\n\n');
+}
 
 function calcArticleStats(article: string): ArticleStats {
   /* Strip HTML tags */
@@ -243,10 +328,18 @@ var Step11Export: FC = function () {
     setDownloadReady(false);
 
     try {
+      // Extract image URLs from slots
+      var imgUrls = imageSlots
+        .filter(function (s): s is typeof s & { url: string } { return !!s.url; })
+        .map(function (s) { return s.url; });
+
+      // Convert HTML article to DOCX-compatible format (markdown-like)
+      var docxText = htmlToDocxText(article, imgUrls);
+
       var res = await exportApi.docx({
         title: selectedTitle || '未命名文章',
-        article: article,
-        images: imageSlots.filter(function (s): s is typeof s & { url: string } { return !!s.url; }).map(function (s) { return s.url; }),
+        article: docxText,
+        images: imgUrls,
       });
 
       if (res.success && res.data) {

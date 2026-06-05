@@ -4,7 +4,7 @@ import re
 import traceback
 from fastapi import APIRouter, HTTPException
 from models.schemas import (
-    DiagnosisRequest, HookRequest, AiCheckRequest, FixRequest,
+    DiagnosisRequest, HookRequest, AiCheckRequest, FixRequest, ApplyCheckFixRequest,
 )
 from services.claude_client import chat
 from services.prompts import step7_diagnosis, step8_hook, step9_ai_check
@@ -12,18 +12,7 @@ from services.prompts import step7_diagnosis, step8_hook, step9_ai_check
 router = APIRouter()
 
 
-def extract_json(text: str) -> dict:
-    """Extract JSON from AI response, handling markdown code blocks."""
-    text = text.strip()
-    # Try to extract from ```json ... ``` block
-    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(1))
-    # Try to extract from { ... }
-    m = re.search(r'\{.*\}', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(0))
-    return json.loads(text)
+from services.utils import extract_json
 
 
 @router.post("/diagnose")
@@ -88,6 +77,36 @@ async def ai_check(req: AiCheckRequest):
         import traceback as tb
         tb.print_exc()
         raise HTTPException(500, type(e).__name__ + ": " + str(e))
+
+
+APPLY_FIX_PROMPT = """你正在修改一篇文章中的"AI写作痕迹"。请严格按照用户指出的问题位置和修改建议进行修改。
+
+规则：
+1. 只修改问题中提到的具体位置的具体文字，不要改动其他任何内容
+2. 保持文章其他段落、句子、措辞完全不变
+3. 直接输出修改后的完整文章，不要加任何解释
+4. 如果修改建议提供了替换方案，优先使用该方案
+5. 注意修改建议中提到的具体位置（如哪一段哪一句）"""
+
+
+@router.post("/apply-check-fix")
+async def apply_check_fix(req: ApplyCheckFixRequest):
+    """Step 9: Apply a single AI signal fix to the article."""
+    try:
+        signal = req.signal
+        user_msg = (
+            "文章正文：\n" + req.article + "\n\n"
+            "检测到的问题：\n"
+            "- 特征：" + signal.get("feature", "") + "\n"
+            "- 描述：" + signal.get("description", "") + "\n"
+            "- 位置：" + signal.get("location", "") + "\n"
+            "- 修改建议：" + signal.get("suggestion", "") + "\n\n"
+            "请根据修改建议，修改文章中的对应部分，输出修改后的完整文章。"
+        )
+        response = await chat(APPLY_FIX_PROMPT, user_msg, max_tokens=4096, temperature=0.5)
+        return {"article": response, "fixed": True}
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 
 FIX_SYSTEM_PROMPT = """你是文章修改专家。根据五维诊断报告逐条修改文章。

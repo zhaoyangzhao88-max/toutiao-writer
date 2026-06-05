@@ -297,33 +297,50 @@ def generate_docx(article, title, images, output_dir):
                 _handle_regular_line(doc, stripped)
 
         # If no [img] markers were used but images were provided, append them at the end
-        if img_idx == 0 and images:
-            doc.add_paragraph()  # spacer
-            sep = doc.add_paragraph()
-            sep.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            sep_run = sep.add_run('── 配图 ──')
-            sep_run.font.size = Pt(11)
-            sep_run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-            doc.add_paragraph()
-            for img_url in images:
-                if img_url:
-                    img_data = _download_image_bytes(img_url)
-                    if img_data:
+        # Image appendix
+        doc.add_paragraph()
+        sep = doc.add_paragraph()
+        sep.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        sep_run = sep.add_run('── 配图链接 ──')
+        sep_run.font.size = Pt(11)
+        sep_run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+        doc.add_paragraph()
+        if images:
+            for i, img_url in enumerate(images):
+                if not img_url:
+                    continue
+                img_data = _download_image_bytes(img_url)
+                if img_data:
+                    try:
+                        suffix = '.jpg'
+                        if img_url.lower().endswith('.png'):
+                            suffix = '.png'
+                        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                            tmp.write(img_data)
+                            tmp_path = tmp.name
+                        para = doc.add_paragraph()
+                        para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        run = para.add_run()
+                        run.add_picture(tmp_path, width=Inches(4.5))
                         try:
-                            suffix = '.jpg'
-                            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-                                tmp.write(img_data)
-                                tmp_path = tmp.name
-                            para = doc.add_paragraph()
-                            para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                            run = para.add_run()
-                            run.add_picture(tmp_path, width=Inches(4.5))
-                            try:
-                                os.unlink(tmp_path)
-                            except Exception:
-                                pass
+                            os.unlink(tmp_path)
                         except Exception:
                             pass
+                    except Exception:
+                        pass
+                link_para = doc.add_paragraph()
+                link_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                link_run = link_para.add_run('图片 ' + str(i + 1) + ': ' + img_url)
+                link_run.font.size = Pt(8)
+                link_run.font.color.rgb = RGBColor(0x33, 0x66, 0xcc)
+                link_run.italic = True
+        else:
+            note = doc.add_paragraph()
+            note.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            n_run = note.add_run('（未选择配图）')
+            n_run.font.size = Pt(9)
+            n_run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
+            n_run.italic = True
 
         # -- Save -----------------------------------------------------------
         filename = _build_filename(title)

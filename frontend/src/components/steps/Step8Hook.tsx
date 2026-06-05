@@ -1,4 +1,4 @@
-import React, { useState, useCallback, type FC } from 'react';
+import React, { useState, useCallback, useEffect, type FC } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -252,6 +252,20 @@ var Step8Hook: FC = function () {
     return text.slice(0, 300).trim();
   }, [article]);
 
+  /* Normalize method name from AI (may return dataImpact instead of data_impact) */
+  var normalizeMethod = function (method: string): string {
+    var map: Record<string, string> = {
+      'data_impact': 'data_impact',
+      'dataimpact': 'data_impact',
+      'data-impact': 'data_impact',
+      'scene_immersion': 'scene_immersion',
+      'sceneimmersion': 'scene_immersion',
+      'scene-immersion': 'scene_immersion',
+      'suspense': 'suspense',
+    };
+    return map[method.toLowerCase()] || method;
+  };
+
   /* Generate hook versions */
   var handleGenerate = useCallback(async function () {
     if (!article || !article.trim()) {
@@ -268,7 +282,11 @@ var Step8Hook: FC = function () {
         var data = res.data as unknown as { versions?: HookVersion[]; hookVersions?: HookVersion[] };
         var versions = data.versions || data.hookVersions || [];
         if (Array.isArray(versions) && versions.length > 0) {
-          setHookVersions(versions);
+          // Normalize method names from AI
+          var normalized = versions.map(function (v) {
+            return { ...v, method: normalizeMethod(v.method) as HookMethod };
+          });
+          setHookVersions(normalized);
           setGenerated(true);
         } else {
           setError('生成开头版本失败，返回数据为空');
@@ -282,6 +300,14 @@ var Step8Hook: FC = function () {
       setLoading(false);
     }
   }, [article, setHookVersions]);
+
+  /* Auto-generate on mount when coming from Step 7 */
+  useEffect(function () {
+    if (article && article.trim() && !hookVersions && !error) {
+      handleGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Select a hook version */
   var handleSelect = function (method: HookMethod) {

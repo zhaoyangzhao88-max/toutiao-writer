@@ -10,7 +10,7 @@ SYSTEM_PROMPT = (
     "\n"
     "## 三种开篇方法\n"
     "\n"
-    "### 方法一：数据冲击（dataImpact）\n"
+    "### 方法一：数据冲击（data_impact）\n"
     "从文章中提取最有冲击力的数字，作为开头的第一句话。\n"
     "为什么有效：数字降低认知成本，制造「这个我得看看」的紧迫感。\n"
     "写法要点：\n"
@@ -36,7 +36,7 @@ SYSTEM_PROMPT = (
     "「同一个小区的二手房，装修更好、楼层更高，挂牌价却比隔壁低了30万。买家看完两套，毫不犹豫选了贵的。为什么？」\n"
     "「全国最火的奶茶店，创始人自己从不喝奶茶。他说了一句话，让所有加盟商沉默了。」\n"
     "\n"
-    "### 方法三：场景代入（sceneImmersion）\n"
+    "### 方法三：场景代入（scene_immersion）\n"
     "描绘一个读者一看就「对，我也经历过」的场景，让读者瞬间代入。\n"
     "为什么有效：人对自己经历过的事格外关注，场景唤起记忆→记忆唤起情绪→情绪驱动继续阅读。\n"
     "写法要点：\n"
@@ -92,17 +92,17 @@ SYSTEM_PROMPT = (
     '{\n'
     '  "versions": [\n'
     '    {\n'
-    '      "method": "dataImpact",\n'
+    '      "method": "data_impact",\n'
     '      "label": "数据冲击",\n'
     '      "text": "开篇全文（50-120字）",\n'
     '      "recommended": false,\n'
     '      "sixChecks": {\n'
-    '        "independence": {"pass": true, "note": ""},\n'
-    '        "hook": {"pass": true, "note": ""},\n'
-    '        "suspense": {"pass": true, "note": ""},\n'
-    '        "credibility": {"pass": true, "note": ""},\n'
-    '        "oralFriendly": {"pass": true, "note": ""},\n'
-    '        "matching": {"pass": true, "note": ""}\n'
+    '        "independence": true,\n'
+    '        "hook": true,\n'
+    '        "suspense": true,\n'
+    '        "credibility": true,\n'
+    '        "oralFriendly": true,\n'
+    '        "matching": true\n'
     '      }\n'
     '    },\n'
     '    {\n'
@@ -110,14 +110,28 @@ SYSTEM_PROMPT = (
     '      "label": "悬念前置",\n'
     '      "text": "开篇全文（50-120字）",\n'
     '      "recommended": false,\n'
-    '      "sixChecks": {...}\n'
+    '      "sixChecks": {\n'
+    '        "independence": true,\n'
+    '        "hook": true,\n'
+    '        "suspense": true,\n'
+    '        "credibility": true,\n'
+    '        "oralFriendly": true,\n'
+    '        "matching": true\n'
+    '      }\n'
     '    },\n'
     '    {\n'
-    '      "method": "sceneImmersion",\n'
+    '      "method": "scene_immersion",\n'
     '      "label": "场景代入",\n'
     '      "text": "开篇全文（50-120字）",\n'
     '      "recommended": true,\n'
-    '      "sixChecks": {...}\n'
+    '      "sixChecks": {\n'
+    '        "independence": true,\n'
+    '        "hook": true,\n'
+    '        "suspense": true,\n'
+    '        "credibility": true,\n'
+    '        "oralFriendly": true,\n'
+    '        "matching": true\n'
+    '      }\n'
     '    }\n'
     '  ]\n'
     '}\n'

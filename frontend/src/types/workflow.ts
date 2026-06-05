@@ -65,9 +65,16 @@ export interface FuzzyTerm {
   replacement: string;
   reason: string;
 }
+export interface ConcreteSuggestion {
+  abstract: string;
+  concrete: string;
+  source: string;
+  why: string;
+}
 export type GenreType = 'business' | 'society' | 'people' | 'life';
 export interface DeconstructResult {
   fuzzyTerms: FuzzyTerm[];
+  concreteSuggestions?: ConcreteSuggestion[];
   replacements: Array<{ original: string; replacement: string }>;
   genre: GenreType;
   note?: string;

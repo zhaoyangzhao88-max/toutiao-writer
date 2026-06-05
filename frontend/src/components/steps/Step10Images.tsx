@@ -302,44 +302,46 @@ var Step10Images: FC = function () {
     return newSlots;
   }, [slots]);
 
-  /* Auto-suggest: generate keywords for all 5 slots based on article */
+  /* Auto-suggest: AI generates keywords for all 5 slots based on article */
   var handleAutoSuggest = useCallback(async function () {
     setAutoLoading(true);
     setAutoError(null);
 
-    var baseSlots = ensureFiveSlots();
-    /* Generate sensible defaults based on article content */
-    var defaultSuggestions = [
-      { topic: '城市天际线', keywords: 'city skyline architecture modern' },
-      { topic: '人群活动', keywords: 'people crowd event gathering' },
-      { topic: '自然风光', keywords: 'nature landscape mountain sunset' },
-      { topic: '社交场景', keywords: 'social interaction conversation meeting' },
-      { topic: '抽象意境', keywords: 'abstract art minimal creative' },
-    ];
+    try {
+      var res = await exportApi.suggestImages({ article: article || '' });
+      if (res.success && res.data) {
+        var data = res.data as unknown as { suggestions: Array<{ topic: string; keywords: string; reason: string }> };
+        var suggestions = data.suggestions || [];
 
-    var updatedSlots = baseSlots.map(function (slot, i) {
-      var def = defaultSuggestions[i];
-      return {
-        ...slot,
-        topic: def.topic,
-        keywords: def.keywords,
-      };
-    });
+        var baseSlots = ensureFiveSlots();
+        var updatedSlots = baseSlots.map(function (slot, i) {
+          var sug = suggestions[i] || { topic: '配图', keywords: 'photo image', reason: '' };
+          return {
+            ...slot,
+            topic: sug.topic,
+            keywords: sug.keywords,
+          };
+        });
 
-    setImageSlots(updatedSlots);
+        setImageSlots(updatedSlots);
 
-    /* Also set local editing state */
-    var newTopics: Record<number, string> = {};
-    var newKeywords: Record<number, string> = {};
-    updatedSlots.forEach(function (s) {
-      newTopics[s.index] = s.topic;
-      newKeywords[s.index] = s.keywords;
-    });
-    setLocalTopics(newTopics);
-    setLocalKeywords(newKeywords);
+        var newTopics: Record<number, string> = {};
+        var newKeywords: Record<number, string> = {};
+        updatedSlots.forEach(function (s) {
+          newTopics[s.index] = s.topic;
+          newKeywords[s.index] = s.keywords;
+        });
+        setLocalTopics(newTopics);
+        setLocalKeywords(newKeywords);
+      } else {
+        setAutoError(res.error || 'AI 建议失败');
+      }
+    } catch (_err) {
+      setAutoError('网络错误');
+    }
 
     setAutoLoading(false);
-  }, [ensureFiveSlots, setImageSlots]);
+  }, [article, ensureFiveSlots, setImageSlots]);
 
   /* Search images for a specific slot */
   var handleSearch = useCallback(async function (slotIndex: number) {

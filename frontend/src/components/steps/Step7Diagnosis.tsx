@@ -1,4 +1,4 @@
-import React, { useState, useCallback, type FC } from 'react';
+import React, { useState, useCallback, useEffect, type FC } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -166,6 +166,17 @@ var Step7Diagnosis: FC = function () {
     setError(null);
 
     try {
+      // Strip HTML tags so AI can read the plain text content
+      const div = document.createElement('div');
+      div.innerHTML = article;
+      const plainText = (div.textContent || div.innerText || '').trim();
+      if (!plainText) {
+        setError('文章内容为空（HTML中无实际文字），请先在 Step 6 中输入正文');
+        setLoading(false);
+        return;
+      }
+      console.log('[diagnose] sending article:', plainText.slice(0, 100) + '... (' + plainText.length + ' chars)');
+
       var res = await optimizeApi.diagnose({ article: article, title: selectedTitle || '' });
       if (res.success && res.data) {
         var data = res.data as unknown as DiagnosisReport;
@@ -181,6 +192,15 @@ var Step7Diagnosis: FC = function () {
       setLoading(false);
     }
   }, [article, selectedTitle, setDiagnosisReport]);
+
+  /* Auto-diagnose on mount when coming from Step 6 */
+  useEffect(function () {
+    if (article && article.trim() && !diagnosisReport && !error) {
+      handleStartDiagnosis();
+    }
+    // Only run on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* Re-run diagnosis after fix-all */
   var handleReDiagnose = useCallback(async function () {
@@ -323,25 +343,7 @@ var Step7Diagnosis: FC = function () {
           )}
         </h3>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {/* Fix one */}
-          <button
-            type="button"
-            className="flex flex-col items-start gap-2 p-4 border-2 border-amber-300 rounded-xl bg-amber-50 hover:bg-amber-100 hover:border-amber-400 transition-all duration-200 text-left focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2"
-            onClick={handleFixOne}
-            aria-label="按第一步做什么修改"
-          >
-            <span className="text-2xl">{'✏️'}</span>
-            <div>
-              <p className="text-sm font-semibold text-amber-900 mb-0.5">
-                按 "第一步做什么" 修改
-              </p>
-              <p className="text-xs text-amber-700 leading-relaxed">
-                只执行最重要的那项修改，进入开头优化
-              </p>
-            </div>
-          </button>
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Fix all */}
           <button
             type="button"

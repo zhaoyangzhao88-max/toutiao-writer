@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { workflowApi } from '../lib/api';
 import type {
   StepNumber,
   StepStatus,
@@ -28,6 +29,8 @@ interface WorkflowActions {
   goPrev: () => void;
   completeStep: (step: number) => void;
   skipStep: (step: number) => void;
+  loadFromBackend: () => Promise<void>;
+  saveToBackend: () => Promise<void>;
   setMaterialMode: (mode: MaterialMode) => void;
   setRawInput: (input: string) => void;
   setFetchedContent: (content: FetchedContent) => void;
@@ -201,6 +204,30 @@ export const useWorkflowStore = create<WorkflowStore>()(
         }),
 
       resetAll: () => set({ ...EMPTY_STATE }),
+
+      loadFromBackend: async () => {
+        try {
+          const res = await workflowApi.loadState();
+          if (res.success && res.data && Object.keys(res.data).length > 0) {
+            set(res.data as Partial<WorkflowState>);
+          }
+        } catch {
+          // Silently fall back to localStorage — backend state is optional
+        }
+      },
+
+      saveToBackend: async () => {
+        try {
+          const state = useWorkflowStore.getState();
+          await workflowApi.saveState({
+            guideAnswers: state.guideAnswers,
+            currentStep: state.currentStep,
+            stepStatus: state.stepStatus,
+          });
+        } catch {
+          // Silently fail — backend persistence is optional
+        }
+      },
     }),
     {
       name: 'toutiao-writer-workflow',

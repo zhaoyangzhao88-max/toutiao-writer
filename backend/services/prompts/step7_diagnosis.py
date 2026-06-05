@@ -147,9 +147,14 @@ SYSTEM_PROMPT = (
 
 
 def build_user_message(article: str, title: str) -> str:
+    import re
+    # Strip HTML tags so AI sees plain text
+    clean = re.sub(r'<[^>]+>', '', article)
+    clean = clean.replace('&nbsp;', ' ').replace('&amp;', '&').strip()
     msg = "标题："
     msg += title
     msg += "\n\n正文：\n"
-    msg += article
+    msg += clean
     msg += "\n\n请对以上文章进行五维度诊断，输出完整JSON报告。"
     return msg
+

@@ -57,6 +57,7 @@ const Step3Extract: FC = () => {
     fetchedContent,
     rawInput,
     materialCard,
+    guideAnswers,
     setMaterialCard,
     completeStep,
     goNext,
@@ -119,7 +120,10 @@ const Step3Extract: FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await materialApi.extract({ raw_material: rawMaterial });
+      const res = await materialApi.extract({
+  raw_material: rawMaterial,
+  guide_answers: guideAnswers as Record<string, unknown> | undefined,
+});
       if (res.success && res.data) {
         const extracted = res.data as unknown as MaterialCard;
         setCard({

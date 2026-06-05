@@ -14,16 +14,8 @@ from services.prompts import step4_deconstruct, step5_titles, step6_article
 router = APIRouter()
 
 
-def extract_json(text: str) -> dict:
-    """Extract JSON from AI response, handling markdown code blocks."""
-    text = text.strip()
-    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(1))
-    m = re.search(r'\{.*\}', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(0))
-    return json.loads(text)
+from services.utils import extract_json
+from services.guide_writer import build_writing_compass
 
 
 @router.post("/deconstruct")
@@ -32,6 +24,11 @@ async def deconstruct(req: DeconstructReq):
     try:
         material_str = json.dumps(req.material_card, ensure_ascii=False)
         user_msg = "素材卡：\n" + material_str
+
+        compass = build_writing_compass(req.guide_answers)
+        if compass:
+            user_msg += "\n\n【写作指南针】\n" + json.dumps(compass, ensure_ascii=False)
+
         response = await chat(
             step4_deconstruct.SYSTEM_PROMPT,
             user_msg,
@@ -54,6 +51,11 @@ async def generate_titles(req: TitleRequest):
             req.material_card,
             req.deconstruct_result or {},
         )
+
+        compass = build_writing_compass(req.guide_answers)
+        if compass:
+            user_msg += "\n\n【写作指南针（写标题时需考虑）】\n" + json.dumps(compass, ensure_ascii=False)
+
         response = await chat(
             step5_titles.SYSTEM_PROMPT,
             user_msg,
@@ -78,10 +80,15 @@ async def write_article(req: ArticleRequest):
             req.deconstruct_result or {},
             req.word_count,
         )
+
+        compass = build_writing_compass(req.guide_answers)
+        if compass:
+            user_msg += "\n\n【写作指南针】\n" + json.dumps(compass, ensure_ascii=False)
+
         response = await chat(
             step6_article.SYSTEM_PROMPT,
             user_msg,
-            max_tokens=4096,
+            max_tokens=max(req.word_count * 3, 8192),
             temperature=0.7,
         )
         word_count = len(response)
@@ -100,12 +107,16 @@ async def write_article_stream(req: ArticleRequest):
         req.word_count,
     )
 
+    compass = build_writing_compass(req.guide_answers)
+    if compass:
+        user_msg += "\n\n【写作指南针】\n" + json.dumps(compass, ensure_ascii=False)
+
     async def event_stream():
         try:
             async for token in chat_stream(
                 step6_article.SYSTEM_PROMPT,
                 user_msg,
-                max_tokens=4096,
+                max_tokens=max(req.word_count * 3, 8192),
                 temperature=0.7,
             ):
                 yield f"data: {json.dumps({'type': 'token', 'content': token})}\n\n"

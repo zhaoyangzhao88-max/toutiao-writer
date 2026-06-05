@@ -25,6 +25,9 @@ frontend/dist/
 # Worktrees
 .worktrees/
 
+# Runtime state
+workflow_state.json
+
 # OS
 .DS_Store
 Thumbs.db

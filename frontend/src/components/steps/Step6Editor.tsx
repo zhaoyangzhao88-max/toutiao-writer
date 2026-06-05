@@ -356,6 +356,7 @@ const Step6Editor: FC = () => {
         material_card: materialCard || {},
         deconstruct_result: deconstructResult || {},
         word_count: getWordCount(),
+        guide_answers: guideAnswers as Record<string, unknown> | undefined,
       });
 
       if (!response.ok) {
@@ -415,6 +416,7 @@ const Step6Editor: FC = () => {
           material_card: materialCard || {},
           deconstruct_result: deconstructResult || {},
           word_count: getWordCount(),
+          guide_answers: guideAnswers as Record<string, unknown> | undefined,
         });
         if (res.success && res.data) {
           const data = res.data as { article?: string };

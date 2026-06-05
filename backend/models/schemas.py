@@ -47,6 +47,7 @@ class ExtractMaterialRequest(BaseModel):
 
 class DeconstructRequest(BaseModel):
     material_card: dict
+    guide_answers: Optional[dict] = None
 
 
 class DeconstructResult(BaseModel):
@@ -59,6 +60,7 @@ class DeconstructResult(BaseModel):
 class TitleRequest(BaseModel):
     material_card: dict
     deconstruct_result: Optional[dict] = None
+    guide_answers: Optional[dict] = None
 
 
 class TitleCard(BaseModel):
@@ -78,6 +80,7 @@ class ArticleRequest(BaseModel):
     material_card: dict
     deconstruct_result: Optional[dict] = None
     word_count: int = 3000
+    guide_answers: Optional[dict] = None
 
 
 class DiagnosisRequest(BaseModel):
@@ -134,6 +137,21 @@ class FixRequest(BaseModel):
     title: str
     diagnosis: dict
     cycle: int = 1  # which fix cycle this is (1=first, 2=second, max 3)
+
+
+class ApplyCheckFixRequest(BaseModel):
+    article: str
+    signal: dict  # AiSignal: {id, feature, level, description, location, suggestion}
+
+
+class SuggestImagesRequest(BaseModel):
+    article: str
+
+
+class SuggestImagesResult(BaseModel):
+    topic: str
+    keywords: str
+    reason: str
 
 
 class ExportDocxRequest(BaseModel):

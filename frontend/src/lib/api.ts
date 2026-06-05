@@ -44,19 +44,19 @@ export const materialApi = {
 };
 
 export const writingApi = {
-  deconstruct: (data: { material_card: unknown }) =>
+  deconstruct: (data: { material_card: unknown; guide_answers?: unknown }) =>
     request('/writing/deconstruct', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  titles: (data: { material_card: unknown; deconstruct_result?: unknown }) =>
+  titles: (data: { material_card: unknown; deconstruct_result?: unknown; guide_answers?: unknown }) =>
     request('/writing/titles', {
       method: 'POST',
       body: JSON.stringify(data),
     }),
 
-  article: (data: { title: string; material_card: unknown; deconstruct_result?: unknown; word_count?: number }) =>
+  article: (data: { title: string; material_card: unknown; deconstruct_result?: unknown; word_count?: number; guide_answers?: unknown }) =>
     request('/writing/article', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -67,6 +67,7 @@ export const writingApi = {
     material_card: unknown;
     deconstruct_result?: unknown;
     word_count?: number;
+    guide_answers?: unknown;
   }): Promise<Response> =>
     fetch(BASE + '/writing/article/stream', {
       method: 'POST',
@@ -101,11 +102,30 @@ export const optimizeApi = {
     }),
 };
 
+export const workflowApi = {
+  /** Load full workflow state from backend (server-side persistence) */
+  loadState: () =>
+    request<Record<string, unknown>>('/workflow/state'),
+
+  /** Save full workflow state to backend */
+  saveState: (state: Record<string, unknown>) =>
+    request('/workflow/state', {
+      method: 'POST',
+      body: JSON.stringify(state),
+    }),
+};
+
 export const exportApi = {
   images: (keywords: string) => {
     const params = new URLSearchParams({ keywords });
     return request('/export/images?' + params.toString());
   },
+
+  suggestImages: (data: { article: string }) =>
+    request('/export/suggest-images', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 
   docx: (data: {
     title: string;

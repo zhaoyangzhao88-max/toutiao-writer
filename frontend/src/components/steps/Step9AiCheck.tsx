@@ -380,6 +380,8 @@ interface SignalListPanelProps {
   signals: AiSignal[];
   appliedFixes: number[];
   activeSignalId: number | null;
+  fixingId: number | null;
+  fixResults: Record<number, { before: string; after: string }>;
   onSignalClick: (id: number) => void;
   onApplyFix: (id: number) => void;
   onIgnoreFix: (id: number) => void;
@@ -389,6 +391,8 @@ var SignalListPanel: FC<SignalListPanelProps> = function ({
   signals,
   appliedFixes,
   activeSignalId,
+  fixingId,
+  fixResults,
   onSignalClick,
   onApplyFix,
   onIgnoreFix,
@@ -507,8 +511,19 @@ var SignalListPanel: FC<SignalListPanelProps> = function ({
                 </div>
               )}
 
-              {/* Action buttons */}
-              {status === 'pending' && (
+              {/* Loading state */}
+              {fixingId === signal.id && (
+                <div className="flex items-center gap-2 py-2">
+                  <svg className="h-4 w-4 animate-spin text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                  <span className="text-xs text-blue-600 font-medium">正在修改...</span>
+                </div>
+              )}
+
+              {/* Action buttons (only when not loading) */}
+              {status === 'pending' && fixingId !== signal.id && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -531,11 +546,21 @@ var SignalListPanel: FC<SignalListPanelProps> = function ({
                 </div>
               )}
 
-              {/* Applied indicator */}
+              {/* Applied indicator with before/after */}
               {status === 'applied' && (
-                <p className="text-xs text-green-600 italic">
-                  {'✅ 已应用此修改'}
-                </p>
+                <div className="space-y-2">
+                  {/* Before */}
+                  <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-red-500 font-medium mb-0.5">修改前</p>
+                    <p className="text-xs text-red-700 line-through leading-relaxed">{fixResults[signal.id]?.before || '（已修改）'}</p>
+                  </div>
+                  {/* After */}
+                  <div className="bg-green-50 border border-green-100 rounded-lg px-3 py-2">
+                    <p className="text-[10px] text-green-500 font-medium mb-0.5">修改后</p>
+                    <p className="text-xs text-green-700 leading-relaxed">{fixResults[signal.id]?.after || '（已修改）'}</p>
+                  </div>
+                  <p className="text-xs text-green-600 italic">✅ 已应用此修改</p>
+                </div>
               )}
 
               {/* Ignored indicator */}
@@ -574,6 +599,7 @@ var Step9AiCheck: FC = function () {
   var setAiCheckResults = store.setAiCheckResults;
   var applyFix = store.applyFix;
   var setArticle = store.setArticle;
+  var setExportStatus = store.setExportStatus;
   var completeStep = store.completeStep;
   var goNext = store.goNext;
   var goPrev = store.goPrev;
@@ -582,6 +608,8 @@ var Step9AiCheck: FC = function () {
   var [error, setError] = useState<string | null>(null);
   var [checked, setChecked] = useState(aiCheckResults != null && aiCheckResults.signals != null);
   var [activeSignalId, setActiveSignalId] = useState<number | null>(null);
+  var [fixingId, setFixingId] = useState<number | null>(null);
+  var [fixResults, setFixResults] = useState<Record<number, { before: string; after: string }>>({});
 
   var localSignals = (aiCheckResults?.signals || []) as AiSignal[];
   var hasResults = localSignals.length > 0;
@@ -592,6 +620,10 @@ var Step9AiCheck: FC = function () {
       setError('请先在 Step 6 中生成或输入文章正文');
       return;
     }
+
+    // 重新检测时清空上次的应用记录和对比结果
+    useWorkflowStore.setState({ appliedFixes: [] });
+    setFixResults({});
 
     setLoading(true);
     setError(null);
@@ -616,6 +648,14 @@ var Step9AiCheck: FC = function () {
     }
   }, [article, setAiCheckResults]);
 
+  /* Auto-detect on mount when coming from Step 8 */
+  useEffect(function () {
+    if (article && article.trim() && !aiCheckResults && !error) {
+      handleStartCheck();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* Click on signal from list */
   var handleSignalClick = useCallback(function (id: number) {
     setActiveSignalId(function (prev) {
@@ -636,10 +676,146 @@ var Step9AiCheck: FC = function () {
     setActiveSignalId(signalId);
   }, []);
 
-  /* Apply fix */
-  var handleApplyFix = useCallback(function (id: number) {
+  /* Get plain text from HTML */
+  var htmlToText = function (html: string): string {
+    var d = document.createElement('div');
+    d.innerHTML = html;
+    return (d.textContent || d.innerText || '').trim();
+  };
+
+  /* Find the most specific quoted/literal text from signal's location field */
+  var extractAnchorText = function (signal: AiSignal): string {
+    // location field often contains quoted原文 like: 「不是能力问题，而是认知问题」
+    // or: 第2段末：'不是能力问题，而是认知问题'；第4段末：'...'
+    var loc = signal.location || '';
+
+    // Try to extract text between various quote styles
+    var quotePatterns = [
+      /「([^」]+)」/g,
+      /'([^']+)'/g,
+      /"([^"]+)"/g,
+      /[：:]\s*([^，。；！？\n]{4,})/g,
+    ];
+
+    var bestMatch = '';
+    for (var p = 0; p < quotePatterns.length; p++) {
+      var matches = loc.matchAll(quotePatterns[p]);
+      for (var m of matches) {
+        if (m[1].length > bestMatch.length) {
+          bestMatch = m[1];
+        }
+      }
+    }
+
+    // If no quoted text found, try using the suggestion's key phrase
+    if (!bestMatch || bestMatch.length < 4) {
+      var sug = signal.suggestion || '';
+      // Extract key phrase from suggestion: usually after '改为' or contains '替换'
+      var sugMatch = sug.match(/改为[：:]\s*'([^']+)'/);
+      if (sugMatch) bestMatch = sugMatch[1];
+    }
+
+    return bestMatch;
+  };
+
+  /* Show text around the signal's location in both old and new articles */
+  var computeAnchorSnippets = function (oldHtml: string, newHtml: string, signal: AiSignal): { before: string; after: string } {
+    var oldText = htmlToText(oldHtml);
+    var newText = htmlToText(newHtml);
+    if (!oldText) return { before: '(空)', after: newText.slice(0, 200) };
+
+    // Find anchor text from signal's location
+    var anchor = extractAnchorText(signal);
+
+    // Search for anchor in old article
+    var searchIn = function (text: string, keyword: string): number {
+      if (!keyword) return -1;
+      var idx = text.indexOf(keyword);
+      if (idx >= 0) return idx;
+      // Try without punctuation
+      var clean = keyword.replace(/[，。、！？：；""''（）]/g, '');
+      if (clean.length >= 4) {
+        idx = text.indexOf(clean);
+        if (idx >= 0) return idx;
+      }
+      // Try first 8 chars
+      var prefix = keyword.slice(0, 8);
+      if (prefix.length >= 4) {
+        idx = text.indexOf(prefix);
+        if (idx >= 0) return idx;
+      }
+      return -1;
+    };
+
+    var pos = searchIn(oldText, anchor);
+
+    // Extract ~150 chars centered on the anchor/find position
+    var extractWindow = function (text: string, center: number, width: number): string {
+      if (center < 0) return text.slice(0, width);
+      var half = Math.floor(width / 2);
+      var start = Math.max(0, center - half);
+      var end = Math.min(text.length, center + half);
+      var snippet = text.slice(start, end);
+      if (start > 0) snippet = '…' + snippet;
+      if (end < text.length) snippet = snippet + '…';
+      return snippet;
+    };
+
+    if (pos >= 0) {
+      return {
+        before: extractWindow(oldText, pos, 160),
+        after: extractWindow(newText, pos, 160),
+      };
+    }
+
+    // Fallback: find first actual difference and show context
+    var minLen = Math.min(oldText.length, newText.length);
+    var diffStart = 0;
+    while (diffStart < minLen && oldText[diffStart] === newText[diffStart]) diffStart++;
+
+    if (diffStart >= minLen - 1) {
+      return { before: oldText.slice(0, 160), after: newText.slice(0, 160) };
+    }
+
+    return {
+      before: extractWindow(oldText, diffStart, 160),
+      after: extractWindow(newText, diffStart, 160),
+    };
+  };
+
+  /* Apply fix — call backend to modify article */
+  var handleApplyFix = useCallback(async function (id: number) {
+    var signal = localSignals.find(function (s) { return s.id === id; });
+    if (!signal) return;
+
+    setFixingId(id);
+
+    try {
+      var res = await fetch('/api/optimize/apply-check-fix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ article: article, signal: signal }),
+      });
+      var data = await res.json();
+      if (res.ok && data.article) {
+        // 用信号 location 中的原文关键词定位修改前后的内容
+        var snippets = computeAnchorSnippets(article || '', data.article, signal);
+
+        setFixResults(function (prev) {
+          var next = { ...prev };
+          next[id] = { before: snippets.before, after: snippets.after };
+          return next;
+        });
+
+        setArticle(data.article);
+      }
+    } catch (_err) {
+      // Fallback: still mark as applied even if API fails
+    }
+
+    setFixingId(null);
     applyFix(id);
-  }, [applyFix]);
+  }, [article, localSignals, setArticle, applyFix]);
 
   /* Ignore fix */
   var handleIgnoreFix = useCallback(function (_id: number) {
@@ -816,6 +992,8 @@ var Step9AiCheck: FC = function () {
               signals={localSignals}
               appliedFixes={appliedFixes}
               activeSignalId={activeSignalId}
+              fixingId={fixingId}
+              fixResults={fixResults}
               onSignalClick={handleSignalClick}
               onApplyFix={handleApplyFix}
               onIgnoreFix={handleIgnoreFix}

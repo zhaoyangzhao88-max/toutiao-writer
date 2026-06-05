@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from routers import material, writing, optimize, export
+from routers import material, writing, optimize, export, workflow_state
 
 app = FastAPI(
     title="Toutiao Writer API",
@@ -24,6 +24,7 @@ app.include_router(material.router, prefix="/api/material", tags=["素材"])
 app.include_router(writing.router, prefix="/api/writing", tags=["写作"])
 app.include_router(optimize.router, prefix="/api/optimize", tags=["优化"])
 app.include_router(export.router, prefix="/api/export", tags=["导出"])
+app.include_router(workflow_state.router, prefix="/api/workflow", tags=["工作流"])
 
 
 @app.get("/api/health")

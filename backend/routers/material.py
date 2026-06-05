@@ -7,16 +7,7 @@ from services.claude_client import chat
 from services.search_client import fetch_url_content, search_web
 
 
-def extract_json(text: str) -> dict:
-    """Extract JSON from AI response, handling markdown code blocks."""
-    text = text.strip()
-    m = re.search(r'```(?:json)?\s*\n?(.*?)\n?```', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(1))
-    m = re.search(r'\{.*\}', text, re.DOTALL)
-    if m:
-        return json.loads(m.group(0))
-    return json.loads(text)
+from services.utils import extract_json
 
 router = APIRouter()
 

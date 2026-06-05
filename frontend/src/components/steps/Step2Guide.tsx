@@ -1,4 +1,4 @@
-import React, { useState, useCallback, type FC } from 'react';
+import React, { useState, useCallback, useEffect, type FC } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Badge } from '../ui/Badge';
@@ -55,9 +55,33 @@ const Step2Guide: FC = function () {
   var skipStep = store.skipStep;
   var goNext = store.goNext;
   var goPrev = store.goPrev;
+  var loadFromBackend = store.loadFromBackend;
+  var saveToBackend = store.saveToBackend;
+
+  // Load server-persisted data on mount (overrides localStorage if backend has data)
+  useEffect(function () {
+    loadFromBackend();
+  }, [loadFromBackend]);
 
   // Local draft initialised from store on mount
   var [draft, setDraft] = useState<GuideAnswers>(guideAnswers || {});
+
+  // Sync store → draft when rehydrated from localStorage (after persist loads)
+  useEffect(function () {
+    if (guideAnswers && Object.keys(guideAnswers).length > 0) {
+      setDraft(function (prev) {
+        if (Object.keys(prev).length === 0) return guideAnswers || {};
+        return prev;
+      });
+    }
+  }, [guideAnswers]);
+
+  // Auto-save draft to store on every change (persists to localStorage)
+  useEffect(function () {
+    if (Object.keys(draft).length > 0) {
+      setGuideAnswers(draft);
+    }
+  }, [draft, setGuideAnswers]);
 
   // ── Audience (single select) ────────────────────────────────
 
@@ -207,8 +231,9 @@ const Step2Guide: FC = function () {
   var handleConfirm = useCallback(function () {
     setGuideAnswers(draft);
     completeStep(2);
+    saveToBackend();
     goNext();
-  }, [draft, setGuideAnswers, completeStep, goNext]);
+  }, [draft, setGuideAnswers, completeStep, saveToBackend, goNext]);
 
   var handleSkip = useCallback(function () {
     skipStep(2);
