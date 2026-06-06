@@ -822,6 +822,49 @@ var Step9AiCheck: FC = function () {
     /* Ignored: just mark it visually; store doesn't track ignores separately */
   }, []);
 
+  /* ── Fix all pending signals sequentially ────────────────────── */
+  var [fixingAll, setFixingAll] = useState(false);
+  var [fixAllProgress, setFixAllProgress] = useState({ current: 0, total: 0 });
+
+  var handleFixAll = useCallback(async function () {
+    var pending = localSignals.filter(function (s) { return !appliedFixes.includes(s.id); });
+    if (pending.length === 0) return;
+
+    setFixingAll(true);
+    setFixAllProgress({ current: 0, total: pending.length });
+    var currentArticle = article || '';
+
+    for (var i = 0; i < pending.length; i++) {
+      var signal = pending[i];
+      setFixAllProgress({ current: i + 1, total: pending.length });
+
+      try {
+        var res = await fetch('/api/optimize/apply-check-fix', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ article: currentArticle, signal: signal }),
+        });
+        var data = await res.json();
+        if (res.ok && data.article) {
+          currentArticle = data.article;
+          var snippets = computeAnchorSnippets(article || '', data.article, signal);
+          setFixResults(function (prev) {
+            var next = { ...prev };
+            next[signal.id] = { before: snippets.before, after: snippets.after };
+            return next;
+          });
+        }
+      } catch (_err) {
+        // Continue with next fix even if one fails
+      }
+
+      applyFix(signal.id);
+    }
+
+    setArticle(currentArticle);
+    setFixingAll(false);
+  }, [article, localSignals, appliedFixes, setArticle, applyFix]);
+
   /* Confirm and go to Step 10 */
   var handleConfirm = useCallback(function () {
     completeStep(9);
@@ -1003,18 +1046,39 @@ var Step9AiCheck: FC = function () {
       )}
 
       {/* Bottom actions */}
-      <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+      <div className="flex items-center justify-between pt-2 border-t border-gray-100 flex-wrap gap-3">
         <Button variant="ghost" size="md" onClick={goPrev}>
           上一步
         </Button>
-        <Button
-          variant="primary"
-          size="md"
-          disabled={!hasResults}
-          onClick={handleConfirm}
-        >
-          确认，进入配图
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Fix-all button */}
+          {hasResults && !fixingAll && appliedFixes.length < localSignals.length && (
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={handleFixAll}
+            >
+              {'\u{1F504} 全部确认并修改 (' + (localSignals.length - appliedFixes.length) + ' 条待处理)'}
+            </Button>
+          )}
+          {fixingAll && (
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
+              <svg className="h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span>正在修改... {fixAllProgress.current}/{fixAllProgress.total}</span>
+            </div>
+          )}
+          <Button
+            variant="primary"
+            size="md"
+            disabled={!hasResults || fixingAll}
+            onClick={handleConfirm}
+          >
+            确认，进入配图
+          </Button>
+        </div>
       </div>
     </div>
   );

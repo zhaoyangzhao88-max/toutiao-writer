@@ -309,7 +309,7 @@ var Step12Preview: FC = function () {
   var handleDownload = useCallback(function () {
     if (exportFilename) {
       var link = document.createElement('a');
-      link.href = '/api/export/download?filename=' + encodeURIComponent(exportFilename);
+      link.href = '/api/export/download/' + encodeURIComponent(exportFilename);
       link.download = exportFilename;
       document.body.appendChild(link);
       link.click();

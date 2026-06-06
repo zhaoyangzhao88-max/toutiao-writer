@@ -229,6 +229,7 @@ var Step8Hook: FC = function () {
   var selectedHook = store.selectedHook;
   var setHookVersions = store.setHookVersions;
   var setSelectedHook = store.setSelectedHook;
+  var setArticle = store.setArticle;
   var completeStep = store.completeStep;
   var goNext = store.goNext;
   var goPrev = store.goPrev;
@@ -324,12 +325,36 @@ var Step8Hook: FC = function () {
     }
   };
 
-  /* Confirm selection and go to Step 9 */
-  var handleConfirm = function () {
-    var final = selected || customHook.trim();
-    if (final) {
-      setSelectedHook(final);
+  /** Replace first paragraph in article HTML with the hook text. */
+  var applyHookToArticle = function (hookText: string): string {
+    if (!article) return '<p>' + hookText + '</p>';
+    // Split hook text into paragraphs by double newline
+    var paragraphs = hookText.split(/\n\n+/).map(function (p) { return p.trim(); }).filter(Boolean);
+    var hookHtml = paragraphs.map(function (p) { return '<p>' + p + '</p>'; }).join('\n');
+
+    // Replace the first <p>...</p> in the article HTML
+    var result = article.replace(/<p>[\s\S]*?<\/p>/, hookHtml);
+    if (result === article) {
+      // No <p> found — prepend the hook
+      result = hookHtml + '\n' + article;
     }
+    return result;
+  };
+
+  /* Confirm: write selected hook into article, then go to Step 9 */
+  var handleConfirm = function () {
+    var finalSelection = selected || customHook.trim();
+    if (!finalSelection) return;
+
+    // Find the selected version's text
+    var selectedVersion = localVersions.find(function (v) { return v.method === selected; });
+    var hookText = selectedVersion?.text || customHook.trim();
+    if (hookText) {
+      var updatedArticle = applyHookToArticle(hookText);
+      setArticle(updatedArticle);
+    }
+
+    setSelectedHook(finalSelection);
     completeStep(8);
     goNext();
   };

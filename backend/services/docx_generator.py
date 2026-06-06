@@ -2,7 +2,7 @@
 
 Parses markdown-like article text and produces a styled .docx file using
 python-docx.  Supports headings, block quotes, bold inline runs, horizontal
-rules, interactive question blocks, and embedded images.
+rules, interactive question blocks, embedded images, and image URL appendix.
 """
 import os
 import re
@@ -12,11 +12,45 @@ import httpx
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _set_document_styles(doc):
+    """Apply template-matched styles (Arial-based, Chinese-compatible)."""
+    # Normal style: Arial 12pt, 1.15 line spacing
+    style = doc.styles['Normal']
+    style.font.name = 'Arial'
+    style.font.size = Pt(12)
+    style.element.rPr.rFonts.set(qn('w:eastAsia'), 'SimSun')
+    style.paragraph_format.line_spacing = 1.15
+    style.paragraph_format.space_after = Pt(4)
+
+    # Heading 1 style: Arial 20pt Bold Dark Blue (for 【】sections)
+    h1 = doc.styles['Heading 1']
+    h1.font.name = 'Arial'
+    h1.font.size = Pt(20)
+    h1.font.bold = True
+    h1.font.color.rgb = RGBColor(0x1F, 0x4E, 0x79)
+    h1.element.rPr.rFonts.set(qn('w:eastAsia'), 'SimSun')
+    h1.paragraph_format.space_before = Pt(18)
+    h1.paragraph_format.space_after = Pt(8)
+    h1.paragraph_format.line_spacing = 1.15
+
+    # Heading 2 style: Arial 14pt Bold (for sub-headings)
+    h2 = doc.styles['Heading 2']
+    h2.font.name = 'Arial'
+    h2.font.size = Pt(14)
+    h2.font.bold = True
+    h2.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    h2.element.rPr.rFonts.set(qn('w:eastAsia'), 'SimSun')
+    h2.paragraph_format.space_before = Pt(12)
+    h2.paragraph_format.space_after = Pt(6)
+    h2.paragraph_format.line_spacing = 1.15
 
 def _sanitize_title(title):
     """Strip characters that are illegal in Windows / Unix filenames."""
@@ -80,6 +114,10 @@ def _is_horizontal_rule(line):
     return line.strip() == '---'
 
 
+def _is_article_title(line):
+    return line.startswith('# ') and '【' not in line
+
+
 def _is_heading2(line):
     return line.startswith('## ') or '【' in line
 
@@ -96,6 +134,18 @@ def _is_image_placeholder(line):
 # Line handlers -- each receives (doc, line, images, img_idx) and returns
 # the (possibly updated) img_idx.
 # ---------------------------------------------------------------------------
+
+
+def _handle_article_title(doc, line):
+    """Render '# text' as article title (template: 28pt Bold Red)."""
+    title_text = line[2:].strip()
+    para = doc.add_paragraph()
+    para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = para.add_run(title_text)
+    run.bold = True
+    run.font.size = Pt(28)
+    run.font.color.rgb = RGBColor(0xC0, 0x00, 0x00)
+    run.font.name = 'Arial'
 
 def _handle_blockquote(doc, line):
     """Render '> quoted text' as italic with left indent."""
@@ -121,14 +171,15 @@ def _handle_horizontal_rule(doc):
 
 
 def _handle_heading2(doc, line):
-    """Render '## text' or 'text【section】' as Heading 2, bold."""
+    """Render '## text' or 'text【section】' as Heading 1 (template style)."""
     header_text = line
     if header_text.startswith('## '):
         header_text = header_text[3:]
-    heading = doc.add_heading(header_text.strip(), level=2)
+    heading = doc.add_heading(header_text.strip(), level=1)
     for run in heading.runs:
         run.bold = True
-        run.font.size = Pt(15)
+        run.font.size = Pt(20)
+        run.font.color.rgb = RGBColor(0x1F, 0x4E, 0x79)
 
 
 def _handle_question(doc, line):
@@ -263,15 +314,13 @@ def generate_docx(article, title, images, output_dir):
             section.left_margin = Inches(1)
             section.right_margin = Inches(1)
 
-        # -- Title ----------------------------------------------------------
-        title_para = doc.add_heading(title, level=1)
-        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        for run in title_para.runs:
-            run.font.size = Pt(22)
-            run.font.color.rgb = RGBColor(0x1a, 0x1a, 0x1a)
+        # -- Apply template-matched styles ----------------------------------
+        _set_document_styles(doc)
 
-        # Spacer after title
-        doc.add_paragraph()
+        # -- Title (template: Arial 28pt Bold, dark red #C00000) -----------
+        # Don't add a separate title paragraph — the article text may contain
+        # a '# ' line which _handle_article_title will render correctly.
+        # The `title` parameter is only used for the filename.
 
         # -- Parse body line by line ----------------------------------------
         img_idx = 0
@@ -283,7 +332,9 @@ def generate_docx(article, title, images, output_dir):
                 doc.add_paragraph()
                 continue
 
-            if _is_blockquote(stripped):
+            if _is_article_title(stripped):
+                _handle_article_title(doc, stripped)
+            elif _is_blockquote(stripped):
                 _handle_blockquote(doc, stripped)
             elif _is_horizontal_rule(stripped):
                 _handle_horizontal_rule(doc)
@@ -296,8 +347,7 @@ def generate_docx(article, title, images, output_dir):
             else:
                 _handle_regular_line(doc, stripped)
 
-        # If no [img] markers were used but images were provided, append them at the end
-        # Image appendix
+        # -- Image URL appendix (always show text links at the end) --------
         doc.add_paragraph()
         sep = doc.add_paragraph()
         sep.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -305,10 +355,12 @@ def generate_docx(article, title, images, output_dir):
         sep_run.font.size = Pt(11)
         sep_run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
         doc.add_paragraph()
-        if images:
+
+        if images is not None and len(images) > 0:
             for i, img_url in enumerate(images):
                 if not img_url:
                     continue
+                # Try to embed the image inline
                 img_data = _download_image_bytes(img_url)
                 if img_data:
                     try:
@@ -328,16 +380,18 @@ def generate_docx(article, title, images, output_dir):
                             pass
                     except Exception:
                         pass
+
+                # Always show the URL as text link
                 link_para = doc.add_paragraph()
                 link_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 link_run = link_para.add_run('图片 ' + str(i + 1) + ': ' + img_url)
-                link_run.font.size = Pt(8)
+                link_run.font.size = Pt(9)
                 link_run.font.color.rgb = RGBColor(0x33, 0x66, 0xcc)
                 link_run.italic = True
         else:
             note = doc.add_paragraph()
             note.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            n_run = note.add_run('（未选择配图）')
+            n_run = note.add_run('（本文未单独配置配图）')
             n_run.font.size = Pt(9)
             n_run.font.color.rgb = RGBColor(0x99, 0x99, 0x99)
             n_run.italic = True

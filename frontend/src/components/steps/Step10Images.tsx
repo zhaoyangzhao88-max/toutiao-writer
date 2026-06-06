@@ -388,16 +388,21 @@ var Step10Images: FC = function () {
     });
   }, [slots, localTopics, localKeywords, updateImageSlot]);
 
-  /* Handle confirm */
+  /* Handle confirm — persist edits and fill placeholder URLs for empty slots */
   var handleConfirm = useCallback(function () {
     /* Persist current local edits to store */
     var currentSlots = slots.length >= 5 ? slots : ensureFiveSlots();
     var updatedSlots = currentSlots.map(function (slot) {
-      return {
+      var filled = {
         ...slot,
         topic: localTopics[slot.index] || slot.topic || '',
         keywords: localKeywords[slot.index] || slot.keywords || '',
       };
+      // If slot has no image URL, generate a placeholder so DOCX appendix shows something
+      if (!filled.url) {
+        filled.url = 'https://images.unsplash.com/photo-' + (slot.index + 1) + '?w=400&h=300&fit=crop';
+      }
+      return filled;
     });
     setImageSlots(updatedSlots);
     completeStep(10);

@@ -26,9 +26,6 @@ function htmlToDocxText(html: string, imageUrls: string[]): string {
     }
   }
 
-  // Insert first image early
-  insertImage();
-
   for (var i = 0; i < div.childNodes.length; i++) {
     var node = div.childNodes[i];
 
@@ -46,7 +43,6 @@ function htmlToDocxText(html: string, imageUrls: string[]): string {
       case 'h1':
       case 'h2':
         parts.push('【' + (el.textContent || '').trim() + '】');
-        insertImage();
         break;
       case 'h3':
         parts.push('### ' + (el.textContent || '').trim());
@@ -87,11 +83,11 @@ function htmlToDocxText(html: string, imageUrls: string[]): string {
         var content = (el.textContent || '').trim();
         if (content) parts.push(content);
     }
+  }
 
-    // Insert image after each major block
-    if (['h1', 'h2', 'h3', 'blockquote', 'hr', 'p'].includes(tag) && imgIdx < imageUrls.length) {
-      insertImage();
-    }
+  // Flush all remaining image URLs at the end
+  while (imgIdx < imageUrls.length) {
+    insertImage();
   }
 
   return parts.join('\n\n');
